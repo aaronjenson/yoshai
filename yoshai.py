@@ -1,3 +1,4 @@
+import argparse
 import time
 import subprocess
 
@@ -10,15 +11,25 @@ from controller import XboxController
 
 DOLPHIN_COMMAND = "dolphin-emu"
 GAME_FILE = "mario_kart.nkit.iso"
-SAVE_FILE = "saves/moo-moo-meadows.sav"
 GAME_NAME = "Mario Kart Wii"
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(prog='YoshAI')
+    parser.add_argument('mode', choices=['collect', 'train-bc', 'run-bc', 'train-dagger', 'run-dagger'])
+    parser.add_argument('-c', '--course', default='luigi-circuit',
+                        help='which course to run (must be in saves/ dir, do not include .sav)')
+
+    return parser.parse_args()
+
+
 def main():
-    dolphin_args = [DOLPHIN_COMMAND, "-e", GAME_FILE, "-s", SAVE_FILE]
-    dolphin = subprocess.Popen(dolphin_args)
-    time.sleep(8)
+    args = parse_args()
+
+    dolphin = start_dolphin(args)
+
     data = []
+
     try:
         display = Display()
         root = display.screen().root
@@ -26,6 +37,7 @@ def main():
         if dolphin_window is None:
             raise Exception("Mario Kart Wii window not found in X11 tree")
 
+        print("ready to start")
         contr = XboxController()
         while contr.A == 0:
             time.sleep(0.01)
@@ -43,6 +55,12 @@ def main():
             file = open('bcdata/data.pkl', 'wb')
             pickle.dump(data, file)
 
+
+def start_dolphin(args):
+    dolphin_args = [DOLPHIN_COMMAND, "-e", GAME_FILE, "-s", f"saves/{args.course}.sav"]
+    dolphin = subprocess.Popen(dolphin_args)
+    time.sleep(3)
+    return dolphin
 
 
 def dolphin_criteria(window):
