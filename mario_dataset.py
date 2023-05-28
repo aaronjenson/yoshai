@@ -7,13 +7,16 @@ import torchvision
 import numpy as np
 
 
+CONTROLS_LENGTH = 5
+
+
 class MarioDataset(Dataset):
     def __init__(self, filenames, image_dir='bcdata/images', device='cpu'):
         self.image_dir = image_dir
         self.device = device
         data = []
         self.images = np.empty((0), dtype=str)
-        self.controls = np.empty((0, 4), dtype=float)
+        self.controls = np.empty((0, CONTROLS_LENGTH), dtype=float)
         if filenames is None:
             return
         for file in filenames:
@@ -24,8 +27,8 @@ class MarioDataset(Dataset):
                 f.close()
 
         for d in data:
-            self.images = np.append(self.images, [d[5]], axis=0)
-            self.controls = np.append(self.controls, [d[0:4]], axis=0)
+            self.images = np.append(self.images, [d[CONTROLS_LENGTH]], axis=0)
+            self.controls = np.append(self.controls, [d[0:CONTROLS_LENGTH]], axis=0)
 
     def __len__(self):
         return len(self.images)
