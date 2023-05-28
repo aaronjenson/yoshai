@@ -4,23 +4,16 @@ import os
 import pickle
 import secrets
 import string
-import subprocess
 import time
 
-import Xlib.X
-import numpy as np
 import torch
-from PIL import Image
-from Xlib.display import Display
+import torchvision
 
 from controller import XboxController
+from dolphin import Dolphin
 from mario_dataset import MarioDataset, split_dataset
 from mario_net import MarioNet
 from virtual_controller import VirtualController
-
-DOLPHIN_COMMAND = "dolphin-emu"
-GAME_FILE = "mario_kart.nkit.iso"
-GAME_NAME = "Mario Kart Wii"
 
 
 def parse_args():
@@ -61,14 +54,9 @@ def collect(args):
     :param args:
     :return:
     """
-    dolphin = start_dolphin(args)
+    dolphin = Dolphin(args.course)
     data = []
     try:
-        display = Display()
-        root = display.screen().root
-        dolphin_window = find_window(root, dolphin_criteria)
-        if dolphin_window is None:
-            raise Exception("Mario Kart Wii window not found in X11 tree")
 
         print("ready to start")
         contr = XboxController()
@@ -76,16 +64,16 @@ def collect(args):
             time.sleep(0.01)
 
         while True:
-            im = screenshot(dolphin_window)
+            im = dolphin.screenshot()
             controls = contr.read()
             name = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(32))
             name = f'{name}.png'
-            im.save(f'bcdata/images/{name}')
+            torchvision.io.write_png(im, f'bcdata/images/{name}')
             controls.append(name)
             data.append(controls)
             time.sleep(0.03)
     finally:
-        dolphin.terminate()
+        dolphin.close()
         if len(data) > 0:
             file = f'bcdata/{args.course}_{len(os.listdir("bcdata"))}.pkl'
             with open(file, 'wb') as f:
@@ -154,35 +142,25 @@ def train_bc(args):
 
 
 def run_model(args):
-    dolphin = start_dolphin(args)
+    dolphin = Dolphin(args.course)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = MarioNet().to(device)
     model.load(args.model_path)
 
     vcont = VirtualController()
-    video = []
+    video = torch.empty((0, 3, 456, 832))
     t = 0
-    frames = 0
     try:
-        display = Display()
-        root = display.screen().root
-        dolphin_window = find_window(root, dolphin_criteria)
-        if dolphin_window is None:
-            raise Exception("Mario Kart Wii window not found in X11 tree")
-
         vcont.press_a()
 
         t = time.time()
         while True:
-            im = screenshot(dolphin_window)
-            im = np.array(im)
-            if args.save_video is not None:
-                video.append(im)
-                frames += 1
-            im = torch.tensor(im, dtype=torch.float32, device=device)
-            im = torch.transpose(im, 0, 2)
+            im = dolphin.screenshot()
             im = torch.reshape(im, tuple([1]) + im.shape)
+            if args.save_video is not None:
+                video = torch.cat((video, im))
+            im = im.to(dtype=torch.float32, device=device)
             model.eval()
             controls = model(im)
             controls = torch.flatten(controls)
@@ -191,16 +169,12 @@ def run_model(args):
     finally:
         t_diff = time.time() - t
         vcont.close()
-        dolphin.terminate()
+        dolphin.close()
         if len(video) > 0:
             print(f"saving video to {args.save_video}")
-            fps = frames // t_diff
-            import cv2
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            video_writer = cv2.VideoWriter(args.save_video, fourcc, fps, (832,456))
-            for frame in video:
-                video_writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-            video_writer.release()
+            fps = len(video) // t_diff
+            video = video.movedim(1, 3).to(dtype=torch.uint8)
+            torchvision.io.write_video(args.save_video, video, fps)
 
 
 def reformat(args):
@@ -222,41 +196,6 @@ def reformat(args):
                 d[5] = name
         with open(file, 'wb') as f:
             pickle.dump(data, f)
-
-
-def start_dolphin(args):
-    dolphin_args = [DOLPHIN_COMMAND, "-e", GAME_FILE, "-s", f"saves/{args.course}.sav"]
-    dolphin = subprocess.Popen(dolphin_args)
-    time.sleep(3)
-    return dolphin
-
-
-def dolphin_criteria(window):
-    name = window.get_wm_name()
-    if name is not None and type(name) == str:
-        return GAME_NAME in name
-    return False
-
-
-def find_window(window, condition):
-    if condition(window):
-        return window
-    children = window.query_tree().children
-    for w in children:
-        res = find_window(w, condition)
-        if res is not None:
-            return res
-    return None
-
-
-def screenshot(window, show=False):
-    geom = window.get_geometry()
-    w, h = geom.width, geom.height
-    raw = window.get_image(0, 0, w, h, Xlib.X.ZPixmap, 0xffffffff)
-    im = Image.frombytes("RGB", (w, h), raw.data, "raw", "BGRX")
-    if show:
-        im.show()
-    return im
 
 
 if __name__ == '__main__':

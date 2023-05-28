@@ -69,8 +69,6 @@ button is a valid state for YoshAI.
 
 Use `pip install -r requirements.txt` to install all necessary python packages.
 
-Note that `opencv-python` is only required if you want to save videos in run mode.
-
 Additional setup is required to make the `python-uinput` module work correctly.
 
 ### `uinput`
@@ -202,7 +200,7 @@ Not yet implemented.
 
 ### `reformat`
 
-This mode is used for development to change the format of saved data.
+This mode was used during development to change the format of saved data.
 You should not depend on its behavior.
 
 ## Acknowledgements
@@ -211,4 +209,8 @@ You should not depend on its behavior.
 
 ## Next Steps
 
+- remove numpy dependency in `mario_dataset.py`
+- make controller config more robust
+- add interactive prompts to collect system
 - make data storage paths easier to change with arguments
+- make generated file names robust to duplicates

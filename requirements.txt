@@ -1,8 +1,7 @@
 xlib~=0.21
-Pillow~=9.5.0
 inputs~=0.5
 torch~=2.0.1
 torchvision~=0.15.2
+av~=10.0.0
 python-uinput~=0.11.2
 numpy~=1.24.3
-opencv-python~=4.7.0.72
