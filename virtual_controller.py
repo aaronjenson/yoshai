@@ -9,10 +9,10 @@ class VirtualController:
         # make sure uinput module is running
         os.system("modprobe uinput")
         self.device = uinput.Device([
-            uinput.ABS_Y + (0, 255, 0, 0),
-            uinput.ABS_X + (0, 255, 0, 0),
-            uinput.ABS_RY + (0, 255, 0, 0),
-            uinput.ABS_RX + (0, 255, 0, 0),
+            uinput.ABS_Y + (-255, 255, 0, 0),
+            uinput.ABS_X + (-255, 255, 0, 0),
+            uinput.ABS_RY + (-255, 255, 0, 0),
+            uinput.ABS_RX + (-255, 255, 0, 0),
             uinput.ABS_Z + (0, 255, 0, 0),
             uinput.ABS_RZ + (0, 255, 0, 0),
             uinput.BTN_TL,
@@ -38,9 +38,9 @@ class VirtualController:
         lb = controls[3]
         x = controls[4]
 
-        rt = map(rt, in_low=0)
+        rt = map(rt, in_low=0, out_low=0)
         rb = discretize(rb)
-        lt = map(lt, in_low=0)
+        lt = map(lt, in_low=0, out_low=0)
         lb = discretize(lb)
         x = map(x)
 
@@ -59,7 +59,7 @@ class VirtualController:
         self.device.destroy()
 
 
-def map(val, in_low=-1, in_high=1, out_low=0, out_high=255):
+def map(val, in_low=-1, in_high=1, out_low=-255, out_high=255):
     """
     Maps given value linearly from one range to another range. Constrains value to out_range
     :param val: value to map
@@ -94,7 +94,13 @@ def discretize(val):
 if __name__ == "__main__":
     c = VirtualController()
     print("controller initialized successfully")
-    c.update([1, 0, 0, 1, 0.5])
-    print("events sent successfully")
-    c.close()
-    print("controller closed, test successful")
+    try:
+        c.update([1, 0, 0, 1, 0.5])
+        print("events sent successfully")
+        secs = 15
+        print(f"keeping open for {secs} secs for profile configuration")
+        print("use ctrl-c to stop early")
+        time.sleep(secs)
+    finally:
+        c.close()
+        print("controller closed, test successful")

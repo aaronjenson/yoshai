@@ -1,3 +1,4 @@
+import os.path
 import struct
 import subprocess
 import time
@@ -10,11 +11,15 @@ from Xlib.display import Display
 DOLPHIN_COMMAND = "dolphin-emu"
 GAME_FILE = "mario_kart.nkit.iso"
 GAME_NAME = "Mario Kart Wii"
+GAME_INI_FILE = "~/.local/share/dolphin-emu/GameSettings/RMCE01.ini"
 
 
 class Dolphin:
-    def __init__(self, course):
-        args = [DOLPHIN_COMMAND, '-e', GAME_FILE, '-s', f'saves/{course}.sav']
+    def __init__(self, course_file, virtual_control=False):
+        with open(os.path.expanduser(GAME_INI_FILE), 'w') as f:
+            f.write(f'[Controls]\nWiimoteProfile1 = mario_kart_linux{"_uinput" if virtual_control else ""}')
+
+        args = [DOLPHIN_COMMAND, '-e', GAME_FILE, '-s', course_file]
         self.process = subprocess.Popen(args)
         time.sleep(3)
         display = Display()
@@ -38,6 +43,9 @@ class Dolphin:
 
     def close(self):
         self.process.terminate()
+
+    def wait(self):
+        self.process.wait()
 
 
 def find_window(window):

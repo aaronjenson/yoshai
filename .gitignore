@@ -1,4 +1,6 @@
 mario_kart.nkit.iso
 bcdata/*
+data/**/*.pkl
+data/**/*.png
 *.pt
 *.mp4
