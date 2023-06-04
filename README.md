@@ -32,6 +32,7 @@ torchvision     used for training
 av              used by torchvision to save videos of runs
 python-uinput   used to simulate controller inputs to doplhin
 numpy           used for general computation, will likely be removed soon
+matplotlib      used for generating plots during training
 ```
 
 Additional setup is required to make the `python-uinput` module work correctly.
@@ -132,8 +133,11 @@ Included in this repo are a few save files that are used to skip programmaticall
 through the UI of Mario Kart. Each save file brings the game to the point after selecting a
 character, vehicle, and course. You can create your own save files by starting Mario Kart,
 navigating through each selection process until you reach the "Go" screen, then in the dolphin
-main window, go to `Emulation` > `Save State` > `Save file` and enter a file name. Place any
-saves that you want to be accessible to YoshAI in the `saves/` folder in this directory.
+main window, go to `Emulation` > `Save State` > `Save as file` and enter a file name. Place the
+file in the corresponding directory within the `data` directory of this project. See the Usage
+section below for details on the `data` directory. I use the convention of naming each save file
+`quickstart.sav` and placing it in its corresponding directory, but you can name the file
+whatever you like as long as it uses the `.sav` extension.
 
 All development of this project was done with the simplest game mode in mind: solo time trials.
 When creating your own save states, I recommend keeping with the simple theme. To reach the
@@ -145,34 +149,89 @@ button is a valid state for YoshAI.
 
 ## Usage
 
-Each mode follows the basic format of:
+```
+usage: YoshAI [-h] {collect,train,run,dagger,reformat} ...
 
-```bash
-python yoshai.py [mode] [arguments]
+options:
+  -h, --help            show this help message and exit
+
+mode:
+  {collect,train,run,dagger,reformat}
+    collect             gather data for training
+    train               train model using data
+    run                 run a trained model
+    dagger              gather data using a trained model
+    reformat            for dev purposes only
 ```
 
-Available modes are `collect`, `train`, `run`, `dagger`, and `reformat`. 
-More details on each mode are below.
+All modes share similar course arguments, which are described next. Each mode is then described
+in more detail.
 
-### `collect`
+### Course Arguments and `data` Directory Structure
 
-Basic usage:
+This project uses the `data` directory to store the save files as well as the training data. To
+keep track of the various options in Mario Kart, each file is saved in a tree of options. By
+default, the available options are: drift mode (automatic, manual), course, character (aka player), vehicle
+(kart, bike), and kart. You can add to or modify this structure by changing `args_to_course_opts`
+and `add_course_args` in `yoshai.py`. 
+
+The command line arguments for these options (referred to as the course arguments) allows you
+to specify what set of options you want to include in whatever task you're doing. Let's take 
+`collect` mode as an example:
 
 ```bash
 python yoshai.py collect
 ```
 
-Optional arguments:
+If you pass no course args in `collect` mode, the default values for each course arg will be taken.
+This results in running luigi circuit with mario on the classic kart in automatic mode.
 
 ```bash
-python yoshai.py collect -c [course]
+python yoshai.py collect -d manual
 ```
 
-`course` should be the name of a save file in the `saves/` directory in this folder. Do not
-include the `.sav` extension in the argument. Default value for `course` is `luigi-circuit`.
+Passing in a single option to one of the args will override the default. In this case, luigi circuit
+with mario on the classic kart in manual mode would be ran.
 
-Collected data will be saved in the `bcdata/` directory, named using the save file name and
-a unique index.
+```bash
+python yoshai.py collect -c luigi-circuit moo-moo-meadows
+```
+
+Specifying two options for one argument will tell `collect` mode to run twice, once with default
+options on luigi circuit, and once with default options on moo-moo-meadows.
+
+```bash
+python yoshai.py collect -k classic classic
+```
+
+Multiple options don't have to be different, the above command is an easy way to avoid having to
+restart `collect` mode each when you're trying to collect lots of data. In this case the course
+would be ran twice, generating two data files.
+
+In `collect` and `dagger` mode, when multiple options are provided, a separate data file is 
+created for each option. Each data file will be saved in its corresponding location in the data 
+directory.
+
+In `train` mode, multiple options will aggregate all data from all options provided into one
+dataset for training. The output model, regardless of number of options, is saved in exactly
+the path given and is not placed in the data directory by default.
+
+In `run` mode, multiple options are not currently supported and will produce an error.
+
+
+### `collect` mode
+
+```
+usage: YoshAI collect [-h] [-d DRIFT_MODE [DRIFT_MODE ...]] [-c COURSE [COURSE ...]] [-p PLAYER [PLAYER ...]] [-v VEHICLE [VEHICLE ...]] [-k KART [KART ...]]
+
+options:
+  -h, --help            show this help message and exit
+  -d DRIFT_MODE [DRIFT_MODE ...], --drift_mode DRIFT_MODE [DRIFT_MODE ...]
+  -c COURSE [COURSE ...], --course COURSE [COURSE ...]
+  -p PLAYER [PLAYER ...], --player PLAYER [PLAYER ...]
+  -v VEHICLE [VEHICLE ...], --vehicle VEHICLE [VEHICLE ...]
+  -k KART [KART ...], --kart KART [KART ...]
+```
 
 Make sure your controller is connected before starting collect mode. Dolphin will be started
 using the provided save file, and once YoshAI is ready to record data, a message will be
@@ -183,24 +242,33 @@ then save your final data to a file for later training.
 
 ### `train`
 
-Basic usage:
-
 ```bash
-python yoshai.py train -d bcdata
-```
+usage: YoshAI train [-h] [-d DRIFT_MODE [DRIFT_MODE ...]] [-c COURSE [COURSE ...]] [-p PLAYER [PLAYER ...]] [-v VEHICLE [VEHICLE ...]] [-k KART [KART ...]] [-b BATCH_SIZE] [-l LEARNING_RATE] [--decay DECAY]
+                    [-e EPOCHS] [-g GAMMA] [--plot] [--force_cpu] [-m MODEL_PATH] [--steer_only] [--load_model LOAD_MODEL]
 
-Optional arguments:
-
-```bash
-python yoshai.py train -d [data_path] -b [batch_size] -l [learning_rate] --decay [decay] -e [epochs] -m [model_path] -g [gamma]
-
-data_path: folder (or file) containing data to train with
-batch_size: number of datapoints to train with at once - default: 64
-learning_rate: optimizer initial learning rate, may change if gamma is not 0 - default: 0.01
-decay: optimizer weight decay - default: 0
-epochs: number of epochs to train for - default: 10
-model_path: if provided, best model is saved to this path
-gamma: exponential factor to lower learning rate each epoch, should be less than 1 - default: 0.9
+options:
+  -h, --help            show this help message and exit
+  -d DRIFT_MODE [DRIFT_MODE ...], --drift_mode DRIFT_MODE [DRIFT_MODE ...]
+  -c COURSE [COURSE ...], --course COURSE [COURSE ...]
+  -p PLAYER [PLAYER ...], --player PLAYER [PLAYER ...]
+  -v VEHICLE [VEHICLE ...], --vehicle VEHICLE [VEHICLE ...]
+  -k KART [KART ...], --kart KART [KART ...]
+  -b BATCH_SIZE, --batch_size BATCH_SIZE
+                        batch size to use for training
+  -l LEARNING_RATE, --learning_rate LEARNING_RATE
+                        initial learning rate to use for training
+  --decay DECAY         weight decay to use for training
+  -e EPOCHS, --epochs EPOCHS
+                        number of epochs for training
+  -g GAMMA, --gamma GAMMA
+                        gamma for exponential learning rate decay
+  --plot                if provided, a plot of losses will be generated
+  --force_cpu           forces pytorch to use cpu instead of cuda
+  -m MODEL_PATH, --model_path MODEL_PATH
+                        path to save or load model
+  --steer_only          designates to only use the steer input
+  --load_model LOAD_MODEL
+                        path to load model from
 ```
 
 Train will run for the given number of epochs and then stop. After each epoch, if the model improved,
@@ -208,21 +276,22 @@ the current model will be saved to disk, meaning you can stop training at any ti
 keep your best results so far.
 
 ### `run`
-
-Basic usage:
-
-```bash
-python yoshai.py run -m model.pt
 ```
+usage: YoshAI run [-h] [-d DRIFT_MODE] [-c COURSE] [-p PLAYER] [-v VEHICLE] [-k KART] [--force_cpu] [-m MODEL_PATH] [--steer_only] [--save_video SAVE_VIDEO]
 
-Optional arguments:
-
-```bash
-python yoshai.py run -m [model_path] -c [course] --save_video
-
-model_path: saved model to use for predicting controls
-course: save file of course to run, must be in saves/, do not include .sav
-save_video: if present, video of the run will be saved after the run is stopped
+options:
+  -h, --help            show this help message and exit
+  -d DRIFT_MODE, --drift_mode DRIFT_MODE
+  -c COURSE, --course COURSE
+  -p PLAYER, --player PLAYER
+  -v VEHICLE, --vehicle VEHICLE
+  -k KART, --kart KART
+  --force_cpu           forces pytorch to use cpu instead of cuda
+  -m MODEL_PATH, --model_path MODEL_PATH
+                        path to save or load model
+  --steer_only          designates to only use the steer input
+  --save_video SAVE_VIDEO
+                        save a video of each captured frame while running
 ```
 
 Similar to `collect`, this mode will start dolphin, but will also start a virtual controller.
@@ -232,12 +301,25 @@ will be saved if the `save_video` argument was provided.
 
 ### `dagger`
 
-Not yet implemented.
+```
+usage: YoshAI dagger [-h] [-d DRIFT_MODE [DRIFT_MODE ...]] [-c COURSE [COURSE ...]] [-p PLAYER [PLAYER ...]] [-v VEHICLE [VEHICLE ...]] [-k KART [KART ...]] [--force_cpu] [-m MODEL_PATH] [--steer_only]
 
-### `reformat`
+options:
+  -h, --help            show this help message and exit
+  -d DRIFT_MODE [DRIFT_MODE ...], --drift_mode DRIFT_MODE [DRIFT_MODE ...]
+  -c COURSE [COURSE ...], --course COURSE [COURSE ...]
+  -p PLAYER [PLAYER ...], --player PLAYER [PLAYER ...]
+  -v VEHICLE [VEHICLE ...], --vehicle VEHICLE [VEHICLE ...]
+  -k KART [KART ...], --kart KART [KART ...]
+  --force_cpu           forces pytorch to use cpu instead of cuda
+  -m MODEL_PATH, --model_path MODEL_PATH
+                        path to save or load model
+  --steer_only          designates to only use the steer input
+```
 
-This mode was used during development to change the format of saved data.
-You should not depend on its behavior.
+`dagger` mode runs the data augmentation step of the DAgger algorithm. It does not do any 
+training. Suggested use is to start with `collect` mode, the `train`, then use `dagger` and
+`train` alternating to increase your dataset size and improve your model with the latest data.
 
 ## Acknowledgements
 
@@ -246,7 +328,3 @@ You should not depend on its behavior.
 ## Next Steps
 
 - remove numpy dependency in `mario_dataset.py`
-- make controller config more robust
-- add interactive prompts to collect system
-- make data storage paths easier to change with arguments
-- make generated file names robust to duplicates

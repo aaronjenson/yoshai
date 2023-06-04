@@ -14,6 +14,11 @@ def deadzone(val):
 
 
 class XboxController(object):
+    """
+    Tracks the values of an xbox controller using the inputs library
+    Credit to @kevinhughes27 on GitHub
+    https://github.com/kevinhughes27/TensorKart/blob/455d28083806814377b60567b559f97597ccd7e0/utils.py#L41
+    """
     MAX_TRIG_VAL = math.pow(2, 8)
     MAX_JOY_VAL = math.pow(2, 15)
 

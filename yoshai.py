@@ -9,6 +9,7 @@ import time
 
 import torch
 import torchvision
+import matplotlib.pyplot as plt
 
 from controller import XboxController
 from data import expand_dir_tree, get_files
@@ -29,8 +30,9 @@ def parse_args():
     d = subparsers.add_parser('dagger', help="gather data using a trained model")
     ref = subparsers.add_parser('reformat', help="for dev purposes only")
 
-    for p in [c, t, r, d]:
+    for p in [c, t, d]:
         add_course_args(p)
+    add_course_args(r, 1)
 
     add_training_args(t)
 
@@ -56,25 +58,21 @@ def add_training_args(parser):
     parser.add_argument('--decay', default=0, type=float, help='weight decay to use for training')
     parser.add_argument('-e', '--epochs', default=10, type=int, help='number of epochs for training')
     parser.add_argument('-g', '--gamma', default=0.9, type=float, help='gamma for exponential learning rate decay')
+    parser.add_argument('--plot', action='store_true', help='if provided, a plot of losses will be generated')
 
 
-def add_course_args(parser):
-    parser.add_argument('-d', '--drift_mode', nargs='+', default=['automatic'])
-    parser.add_argument('-c', '--course', nargs='+', default=['luigi-circuit'])
-    parser.add_argument('-p', '--player', nargs='+', default=['mario'])
-    parser.add_argument('-v', '--vehicle', nargs='+', default=['karts'])
-    parser.add_argument('-k', '--kart', nargs='+', default=['classic'])
+def add_course_args(parser, n='+'):
+    parser.add_argument('-d', '--drift_mode', nargs=n, default=['automatic'])
+    parser.add_argument('-c', '--course', nargs=n, default=['luigi-circuit'])
+    parser.add_argument('-p', '--player', nargs=n, default=['mario'])
+    parser.add_argument('-v', '--vehicle', nargs=n, default=['karts'])
+    parser.add_argument('-k', '--kart', nargs=n, default=['classic'])
 
 
 def add_pytorch_args(parser):
     parser.add_argument('--force_cpu', action='store_true', help='forces pytorch to use cpu instead of cuda')
     parser.add_argument('-m', '--model_path', help='path to save or load model')
     parser.add_argument('--steer_only', action='store_true', help='designates to only use the steer input')
-
-
-def main():
-    args = parse_args()
-    args.func(args)
 
 
 def collect(args):
@@ -85,7 +83,7 @@ def collect(args):
     """
     print("starting data collection mode")
 
-    course_opts = args_to_cours_opts(args)
+    course_opts = args_to_course_opts(args)
     dirs = expand_dir_tree(course_opts)
 
     print(f"{len(dirs)} were selected for data collection")
@@ -146,16 +144,14 @@ def collect(args):
                 print(f'wrote {len(data)} datapoints to {file}')
 
 
-def random_name(length):
-    return ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length))
-
-
 def train_bc(args):
 
-    files = get_files(args_to_cours_opts(args), ext='.pkl')
+    files = get_files(args_to_course_opts(args), ext='.pkl')
     if len(files) == 0:
         print('no data found')
         exit(1)
+
+    files.sort(key= lambda f: os.stat(f).st_mtime)
 
     device = torch.device("cuda" if not args.force_cpu and torch.cuda.is_available() else "cpu")
     print(f"training using device: {device}")
@@ -165,7 +161,10 @@ def train_bc(args):
         model.load(args.load_model)
     model.freeze()
 
-    if len(files) > 4:
+    if len(files) > 10:
+        train_ds = MarioDataset(files[4:], device=device, steer_only=args.steer_only)
+        test_ds = MarioDataset([files[0], files[-1]], device=device, steer_only=args.steer_only)
+    elif len(files) > 4:
         train_ds = MarioDataset(files[:-1], device=device, steer_only=args.steer_only)
         test_ds = MarioDataset(files[-1:], device=device, steer_only=args.steer_only)
     else:
@@ -174,13 +173,15 @@ def train_bc(args):
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=args.batch_size, shuffle=True)
 
     # loss_fn = WeightedLoss(torch.nn.MSELoss(), torch.tensor([1, 1, 1, 1, 5], device=device))
-    loss_fn = torch.nn.MSELoss()
+    loss_fn = torch.nn.L1Loss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.decay)
 
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, args.gamma)
 
     best_loss = math.inf
+    train_losses = []
+    test_losses = []
     for e in range(args.epochs):
         total_loss = 0.
         for i, data in enumerate(train_loader):
@@ -204,10 +205,14 @@ def train_bc(args):
 
             test_loss += loss.item()
         avg_test_loss = test_loss / len(test_loader)
+        avg_train_loss = total_loss / len(train_loader)
 
         print(
-            f"epoch {e + 1} avg train loss: {total_loss / len(train_loader)}, avg test loss: {avg_test_loss}")
+            f"epoch {e + 1} avg train loss: {avg_train_loss}, avg test loss: {avg_test_loss}")
         print(f"========== epoch {e + 1}/{args.epochs} done ==========")
+
+        train_losses.append(avg_train_loss)
+        test_losses.append(avg_test_loss)
 
         scheduler.step()
 
@@ -216,9 +221,16 @@ def train_bc(args):
             best_loss = avg_test_loss
             model.save(args.model_path)
 
+    with plt.xkcd():
+        plt.title('loss vs epoch')
+        plt.plot(test_losses, label='test')
+        plt.plot(train_losses, label='train')
+        plt.legend()
+        plt.show()
+
 
 def run_model(args):
-    course_opts = args_to_cours_opts(args)
+    course_opts = args_to_course_opts(args)
     dirs = expand_dir_tree(course_opts)
 
     if len(dirs) > 1:
@@ -267,7 +279,7 @@ def run_model(args):
 
 def dagger(args):
     print("starting dagger data collection mode")
-    course_opts = args_to_cours_opts(args)
+    course_opts = args_to_course_opts(args)
     dirs = expand_dir_tree(course_opts)
 
     print(f"{len(dirs)} were selected for data collection")
@@ -346,27 +358,6 @@ def dagger(args):
                 print(f'wrote {len(data)} datapoints to {file}')
 
 
-def course_opt_to_save_file(config):
-    course = os.path.join(*config)
-    if not os.path.exists(course):
-        print(f'{course} course config does not exist')
-    files = os.listdir(course)
-    f = None
-    for file in files:
-        if file.endswith('.sav'):
-            f = file
-            break
-    if f is None:
-        print(f'save file not found for course config {course}')
-        exit()
-    f = os.path.join(course, f)
-    return f
-
-
-def args_to_cours_opts(args):
-    return [args.drift_mode, args.course, args.player, args.vehicle, args.kart]
-
-
 def reformat(args):
     files = []
     if os.path.isfile(args.data):
@@ -386,6 +377,36 @@ def reformat(args):
                 d[5] = name
         with open(file, 'wb') as f:
             pickle.dump(data, f)
+
+
+def random_name(length):
+    return ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length))
+
+
+def course_opt_to_save_file(config):
+    course = os.path.join(*config)
+    if not os.path.exists(course):
+        print(f'{course} course config does not exist')
+    files = os.listdir(course)
+    f = None
+    for file in files:
+        if file.endswith('.sav'):
+            f = file
+            break
+    if f is None:
+        print(f'save file not found for course config {course}')
+        exit()
+    f = os.path.join(course, f)
+    return f
+
+
+def args_to_course_opts(args):
+    return [args.drift_mode, args.course, args.player, args.vehicle, args.kart]
+
+
+def main():
+    args = parse_args()
+    args.func(args)
 
 
 if __name__ == '__main__':
