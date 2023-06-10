@@ -242,7 +242,7 @@ then save your final data to a file for later training.
 
 ### `train`
 
-```bash
+```
 usage: YoshAI train [-h] [-d DRIFT_MODE [DRIFT_MODE ...]] [-c COURSE [COURSE ...]] [-p PLAYER [PLAYER ...]] [-v VEHICLE [VEHICLE ...]] [-k KART [KART ...]] [-b BATCH_SIZE] [-l LEARNING_RATE] [--decay DECAY]
                     [-e EPOCHS] [-g GAMMA] [--plot] [--force_cpu] [-m MODEL_PATH] [--steer_only] [--load_model LOAD_MODEL]
 

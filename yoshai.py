@@ -259,9 +259,10 @@ def run_model(args):
                 if args.save_video is not None:
                     video = torch.cat((video, im))
                 im = im.to(dtype=torch.float32, device=device)
-                model.eval()
-                controls = model(im)
-                controls = torch.flatten(controls)
+                with torch.no_grad():
+                    model.eval()
+                    controls = model(im)
+                    controls = torch.flatten(controls)
                 if args.steer_only:
                     controls = [1, 0, 0, 0, controls.item()]
                 vcont.update(controls)
